@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drag & Drop Dichotomous Key Builder</title>
+    
+<script src="https://cdn.tailwindcss.com"></script>
+    
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    
+<style>
+        @import url('https://fonts.fonts.gstatic.com/s/inter/v13/Uuajpus_zNqFzNryjXN1-sFf-7iZ8NlV6F3r-z_x.woff2');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        
+        /* Keyframe for Drop Zone Pulse Animation */
+        @keyframes pulse-border {
+            0% { border-color: #1e40af; box-shadow: 0 0 0 0 rgba(30, 64, 175, 0.7); }
+            50% { border-color: #3b82f6; box-shadow: 0 0 0 8px rgba(30, 64, 175, 0); }
+            100% { border-color: #1e40af; box-shadow: 0 0 0 0 rgba(30, 64, 175, 0.7); }
+        }
+        
+        /* Keyframe for Arrow Animation */
+        @keyframes arrow-bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); opacity: 1; }
+            50% { transform: translateX(-50%) translateY(-8px); opacity: 0.8; }
+        }
+
+        /* Arrow Styling - Applied to a container for the "DRAG & DROP" text */
+        .drop-target-text-wrapper {
+            position: relative; 
+            display: inline-block; 
+            padding-top: 35px; /* Increased for spacing */
+        }
+        
+        .drop-target-text-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0; 
+            height: 0; 
+            border-left: 18px solid transparent; /* Increased size */
+            border-right: 18px solid transparent; /* Increased size */
+            border-bottom: 30px solid #ef4444; /* Increased size */
+            filter: drop-shadow(0 3px 5px rgba(239, 68, 68, 0.4));
+            animation: arrow-bounce 1s infinite;
+            z-index: 20; 
+        }
+
+
+        /* Drag and Drop Characteristics Styling (Part 3) */
+        .feature-draggable {
+            /* 💡 MODIFICATION: Increased horizontal padding to px-8 and forced left alignment for better appearance. */
+            @apply font-semibold py-4 px-8 shadow transition duration-150 cursor-grab text-sm text-left border;
+            border-radius: 8px; 
+            min-width: 120px; 
+            text-wrap: wrap; 
+        }
+        
+        /* Styling for the feature list container */
+        #feature-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); 
+            gap: 10px; 
+            padding: 0; 
+        }
+
+
+        /* Tree Container */
+        .tree-container {
+            min-height: 400px; 
+            /* This allows the tree to scroll horizontally if necessary */
+            overflow-x: auto;
+            /* IMPORTANT: Setting overflow-y to 'visible' for html2canvas to capture full height,
+               BUT for this application, 'hidden' is better to prevent body scroll issues. 
+               We will keep it as 'hidden' as horizontal scroll is the main concern here. */
+            overflow-y: hidden; 
+            padding: 20px 80px; /* FIX: Increased horizontal padding from 50px to 80px */
+            display: flex; 
+            justify-content: center; 
+        }
+
+        /* Wrapper for Node and its children (Vertical Stack) */
+        .tree-node-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        
+        /* Individual Node Box - MODIFIED: Increased size for better visibility */
+        .tree-node {
+            @apply border-2 p-3 rounded-lg shadow transition-all duration-300 text-base font-semibold text-center; 
+            min-width: 300px; 
+            max-width: 400px; 
+            min-height: 100px; 
+            position: relative;
+            z-index: 10;
+            cursor: pointer;
+        }
+        
+        /* Node with a split feature - NO LONGER DRAGGABLE FOR REVERSION */
+        .split-node-draggable {
+             @apply cursor-default; 
+             box-shadow: 0 0 10px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(185, 28, 28, 0.5); 
+        }
+        
+        /* Drop Zone Clarity (Active Node) */
+        .active-node {
+            @apply border-4 border-solid bg-blue-100 text-blue-900;
+            border-color: #1e40af; 
+            animation: pulse-border 1.5s infinite ease-in-out;
+            cursor: crosshair; /* Indicate drop target */
+        }
+        
+        /* Drag Target Highlighting */
+        .drag-over {
+            @apply border-4 border-solid border-yellow-500 bg-yellow-100 scale-105;
+            animation: none; 
+        }
+        
+        /* Finalized Node */
+        .final-node {
+            @apply border-4 border-solid border-green-600 bg-green-200 text-green-900 font-bold;
+            cursor: default;
+        }
+        
+        /* Removed Revert Drop Zone Styling */
+
+
+        /* --- Line and Arrow Styling for Vertical Tree (FIXED for absolute horizontal line) --- */
+
+        /* Vertical line extending down from the parent node */
+        .split-vertical-line {
+            height: 30px; 
+            width: 3px; 
+            background-color: #4b5563;
+            margin: 0;
+            z-index: 5;
+        }
+
+        /* Container for the child branches: uses GRID to layout the nodes and is RELATIVE for absolute positioning of the stems and horizontal line - MODIFIED: Reduced gap */
+        .children-container {
+            display: grid;
+            /* NOTE: grid-template-columns is now set dynamically via classes below */
+            gap: 20px; 
+            margin-top: -3px; 
+            width: 100%; 
+            position: relative; 
+            /* Grid span must be explicitly set here to allow ::before to cover both columns */
+            grid-column: 1 / -1; 
+        }
+        
+        /* NEW: Dynamic Grid Layouts */
+        .children-container.grid-cols-50-50 {
+            grid-template-columns: 1fr 1fr; 
+        }
+        
+        .children-container.grid-cols-final-active {
+            grid-template-columns: 1fr 2fr; 
+        }
+        
+        .children-container.grid-cols-active-final {
+            grid-template-columns: 2fr 1fr; 
+        }
+
+
+        /* The horizontal line connector: Now implemented as a pseudo-element */
+        .children-container::before {
+            content: '';
+            position: absolute;
+            top: 3px; 
+            left: 0;
+            right: 0;
+            height: 3px; 
+            background-color: #4b5563; 
+            z-index: 5; 
+        }
+        
+        /* Wrapper for each child branch (holds only the node box now) */
+        .branch-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            padding: 0 10px; 
+            min-width: 350px; 
+        }
+        
+        /* NEW: ABSOLUTELY POSITIONED STEMS - Pinned to the edges of the children-container */
+        .absolute-stem-container {
+            position: absolute;
+            top: 0; 
+            z-index: 15;
+            padding-top: 3px; 
+            height: 36px; 
+        }
+
+        .absolute-stem-container.no-branch {
+            left: 0; 
+        }
+
+        .absolute-stem-container.yes-branch {
+            right: 0; 
+        }
+
+        /* The vertical stem that drops from the horizontal line to the child node */
+        .branch-vertical-stem {
+            width: 3px; 
+            height: 30px; 
+            background-color: #4b5563;
+            position: relative;
+        }
+
+
+        /* Branch Label Styling (Positions next to the vertical stem) */
+        .branch-label-side {
+            position: absolute;
+            font-size: 1.125rem; 
+            font-weight: 700; 
+            padding: 4px 8px; 
+            border-radius: 4px;
+            top: 50%; 
+            transform: translateY(calc(-50% + 3px)); 
+            z-index: 20;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* Position label to the LEFT of the vertical stem (for the NO/left branch) */
+        .no-branch .branch-label-side {
+            right: 100%; 
+            margin-right: 15px; 
+        }
+
+        /* Position label to the RIGHT of the vertical stem (for the YES/right branch) */
+        .yes-branch .branch-label-side {
+            left: 100%; 
+            margin-left: 15px; 
+        }
+
+        /* Arrow pointing down from the branch stem to the node */
+        .branch-vertical-stem::after {
+            content: '';
+            position: absolute;
+            top: 100%; 
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent; 
+            border-right: 4px solid transparent; 
+            border-top: 4px solid #4b5563; 
+            transform: translateX(-50%);
+        }
+        
+        .node-content {
+            white-space: pre-wrap;
+        }
+        
+        /* Style for the internal animal display */
+        .animal-display-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); 
+            gap: 10px; 
+            justify-items: center; 
+        }
+        .animal-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .animal-image-container {
+            width: 100px; 
+            height: 100px; 
+            border-radius: 9999px; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 5px solid; 
+        }
+        /* MODIFIED: Increased font size for animal names */
+        .animal-item span {
+            font-size: 1.125rem; 
+            font-weight: 500; 
+            color: #4b5563; 
+            line-height: 1.375; 
+            margin-top: 4px; 
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6">
+
+    <div class="max-w-full mx-auto">
+        <header class="text-center py-6 bg-blue-600 text-white rounded-lg shadow mb-6">
+            <h1 class="text-2xl sm:text-4xl font-bold tracking-tight">Drag & Drop Dichotomous Key Builder</h1>
+            <p class="mt-1 text-base text-blue-200">Build a classification key to separate the chosen vertebrates.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+            <div class="lg:col-span-1 bg-white p-5 rounded-lg shadow space-y-6">
+                
+                <h2 class="text-xl font-bold text-gray-800 border-b pb-3">1. Select Animals</h2>
+                
+                <div class="space-y-3">
+                    <label for="random-count" class="block text-sm font-medium text-gray-700">Number of Animals to Select (Min 2):</label>
+                    <div class="flex space-x-2">
+                        <input type="number" id="random-count" min="2" max="20" value="4" class="w-1/3 p-2 border border-gray-300 rounded-lg text-center" onchange="validateRandomCount()">
+                        <button id="random-select-btn" class="w-2/3 py-2 bg-purple-500 hover:bg-purple-600 text-base text-white font-semibold rounded-lg shadow transition duration-150" onclick="randomlySelectAnimalsFromInput()">
+                            Randomly Select
+                        </button>
+                    </div>
+                </div>
+
+                <div id="animal-checkboxes" class="space-y-1 max-h-60 overflow-y-auto p-3 border border-blue-300 rounded-lg bg-gray-50 text-sm">
+                    </div>
+
+                <button id="start-quiz-btn" class="w-full py-3 mt-4 bg-green-500 hover:bg-green-600 text-lg text-white font-bold rounded-lg shadow-md transition duration-150" onclick="startQuiz()" disabled>
+                    Start Classification Key!
+                </button>
+                
+                <div id="global-message" class="mt-3">
+                    </div>
+                
+                <div class="lg:sticky lg:top-6 lg:mt-6">
+                    <h2 class="text-xl font-bold text-gray-800 border-b pb-3">2. Diagnostic Features (Drag & Drop)</h2>
+                    
+                    <div id="feature-list">
+                        </div>
+
+                    <h2 class="text-xl font-bold text-gray-800 border-b pt-4 pb-3">3. Controls</h2>
+                    <button 
+                        id="undo-split-btn" 
+                        class="w-full py-3 mt-4 bg-yellow-500 hover:bg-yellow-600 text-lg text-white font-bold rounded-lg shadow-md transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed" 
+                        onclick="undoLastSplit()" 
+                        disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h11v2h-11v-2zm13 0h3v2h-3v-2zM3 14h11v2h-11v-2zm13 0h3v2h-3v-2zM3 6h11v2h-11V6zm13 0h3v2h-3V6z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 21.5l-3.5-3.5 3.5-3.5m-3.5 3.5h11"/>
+                        </svg>
+                        Undo Last Split
+                    </button>
+                    
+                    <button 
+                        id="save-image-btn" 
+                        class="w-full py-3 mt-4 bg-blue-500 hover:bg-blue-600 text-lg text-white font-bold rounded-lg shadow-md transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed" 
+                        onclick="saveTreeImage()" 
+                        disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        Save Key Image (PNG)
+                    </button>
+                    </div>
+
+            </div>
+
+            <div class="lg:col-span-4 bg-white p-6 rounded-lg shadow space-y-6">
+                
+                <h2 class="text-2xl font-bold text-gray-800 border-b pb-3">4. Dynamic Classification Key (Vertical Tree)</h2>
+                
+                <div id="quiz-area" class="mt-4 space-y-5">
+                    <p class="text-gray-500 text-lg text-center p-8 border-dashed border rounded-lg">Select animals and click "Start" to begin building the classification key.</p>
+                </div>
+                
+                <div id="tree-capture-wrapper" class="w-full">
+                    <div id="tree-visualization" class="tree-container bg-gray-50 rounded-lg border border-gray-300">
+                        </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // Global environment variables (API key and image generation functions removed)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // --- Data Definitions ---
+        
+        const ANIMALS = [
+            { name: "Lion", group: "Mammal" }, { name: "Cow", group: "Mammal" }, { name: "Human", group: "Mammal" }, { name: "Bat", group: "Mammal" },
+            { name: "Ostrich", group: "Bird" }, { name: "Eagle", group: "Bird" }, { name: "Penguin", group: "Bird" }, { name: "Macaw Parrot", group: "Bird" },
+            { name: "Python Snake", group: "Reptile" }, { name: "Pogona Lizard", group: "Reptile" }, { name: "Alligator", group: "Reptile" }, { name: "Tortoise", group: "Reptile" },
+            { name: "Tree Frog", group: "Amphibian" }, { name: "Toad", group: "Amphibian" }, { name: "Salamander", group: "Amphibian" },
+            { name: "Tuna", group: "Fish" }, { name: "Angelfish", group: "Fish" }, { name: "Goldfish", group: "Fish" }, { name: "Shark", group: "Fish" }, { name: "Eel", group: "Fish" },
+        ].sort((a, b) => a.name.localeCompare(b.name));
+
+        // Diagnostic features (used by the interactive quiz) - NOW WITH COLOR CLASSES
+        const DIAGNOSTIC_FEATURES = [
+            { id: 'warm_blooded', name: 'Warm-Blooded (Constant Body Temp)', condition: animal => animal.group === 'Mammal' || animal.group === 'Bird', applies_to: ['Mammal', 'Bird', 'Reptile', 'Amphibian', 'Fish'], colorClass: 'bg-red-500 hover:bg-red-600 border-red-700' },
+            { id: 'hair_milk', name: 'Has Hair/Fur and Feeds Young Milk', condition: animal => animal.group === 'Mammal', applies_to: ['Mammal', 'Bird'], colorClass: 'bg-yellow-500 hover:bg-yellow-600 border-yellow-700' },
+            { id: 'feathers', name: 'Has Feathers and a Beak', condition: animal => animal.group === 'Bird', applies_to: ['Mammal', 'Bird'], colorClass: 'bg-green-500 hover:bg-green-600 border-green-700' },
+            { id: 'gills_water', name: 'Lives Only in Water and Has Gills/Fins', condition: animal => animal.group === 'Fish', applies_to: ['Mammal', 'Bird', 'Reptile', 'Amphibian', 'Fish'], colorClass: 'bg-blue-500 hover:bg-blue-600 border-blue-700' },
+            { id: 'dry_scales', name: 'Has Hard, Dry Scales', condition: animal => animal.group === 'Reptile', applies_to: ['Reptile', 'Amphibian'], colorClass: 'bg-purple-500 hover:bg-purple-600 border-purple-700' },
+            { id: 'moist_skin', name: 'Has Moist, Smooth Skin', condition: animal => animal.group === 'Amphibian', applies_to: ['Reptile', 'Amphibian'], colorClass: 'bg-pink-500 hover:bg-pink-600 border-pink-700' }
+        ];
+
+        // --- Quiz State and Tree Structure ---
+        let quizState = {
+            isStarted: false,
+            initialAnimals: [],
+            initialGroups: new Set(),
+            availableFeatures: DIAGNOSTIC_FEATURES.map(f => f.id),
+            tree: null,
+            // NEW: History stack to store previous states for undo functionality
+            history: [] 
+        };
+
+        // --- DOM Elements ---
+        const checkboxContainer = document.getElementById('animal-checkboxes'); 
+        const startQuizBtn = document.getElementById('start-quiz-btn');
+        const featureListContainer = document.getElementById('feature-list');
+        const quizArea = document.getElementById('quiz-area');
+        const treeVisualization = document.getElementById('tree-visualization');
+        // NEW: Reference to the capture wrapper and save button
+        const treeCaptureWrapper = document.getElementById('tree-capture-wrapper');
+        const saveImageBtn = document.getElementById('save-image-btn');
+        // END NEW REFERENCES
+        const globalMessage = document.getElementById('global-message');
+        const undoSplitBtn = document.getElementById('undo-split-btn');
+
+
+        // --- Utility Functions ---
+        
+        function createMessageDiv(type, message) {
+            let baseClass = 'p-3 mb-3 rounded-lg font-semibold text-sm';
+            switch (type) {
+                case 'success':
+                    baseClass += ' bg-green-100 border-l-4 border-green-500 text-green-700';
+                    break;
+                case 'error':
+                    baseClass += ' bg-red-100 border-l-4 border-red-500 text-red-700';
+                    break;
+                case 'warning':
+                    baseClass += ' bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700';
+                    break;
+                case 'info':
+                default:
+                    baseClass += ' bg-blue-100 border-l-4 border-blue-500 text-blue-700';
+                    break;
+            }
+            const div = document.createElement('div');
+            div.className = baseClass;
+            div.innerHTML = message;
+            return div;
+        }
+
+
+        const isFullyClassified = (animals) => {
+            if (animals.length === 0) return null;
+            const firstGroup = animals[0].group;
+            return animals.every(a => a.group === firstGroup) ? firstGroup : null;
+        };
+        
+        // --- Drag and Drop Handlers (Only for list to node) ---
+
+        function handleDragStart(event) {
+            // Only handle drag start from the feature list
+            if (event.target.dataset.featureId) {
+                event.dataTransfer.setData('text/plain', event.target.dataset.featureId);
+                event.dataTransfer.setData('application/x-drag-type', 'list-to-node'); 
+                event.target.classList.add('opacity-50');
+            } 
+            // Removed drag logic for split nodes
+        }
+
+        function handleDragEnd(event) {
+            event.target.classList.remove('opacity-50');
+        }
+
+        // Drop zone for active nodes in the tree
+        function handleDragOver(event) {
+            event.preventDefault(); 
+            const targetNode = event.currentTarget;
+            const dragType = event.dataTransfer.types.includes('application/x-drag-type') ? event.dataTransfer.getData('application/x-drag-type') : null;
+
+            // Only allow drops from the feature list
+            if (dragType === 'list-to-node' && targetNode.classList.contains('active-node') && !targetNode.classList.contains('final-node')) {
+                targetNode.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(event) {
+            event.currentTarget.classList.remove('drag-over');
+        }
+        
+        // REMOVED: Revert Drop Zone handlers
+
+        // NEW: Undo function using history stack
+        window.undoLastSplit = function() {
+            if (quizState.history.length === 0) {
+                globalMessage.innerHTML = createMessageDiv('warning', 'Cannot undo: no prior steps recorded.').outerHTML;
+                undoSplitBtn.disabled = true;
+                return;
+            }
+
+            const lastState = quizState.history.pop();
+            // Restore the previous state
+            quizState.tree = lastState.tree;
+            quizState.availableFeatures = lastState.availableFeatures;
+            
+            undoSplitBtn.disabled = quizState.history.length === 0;
+
+            globalMessage.innerHTML = createMessageDiv('info', 'Undo successful. The last feature split has been reverted.').outerHTML;
+            window.renderTree();
+        }
+
+
+        function handleDrop(event) {
+            event.preventDefault();
+            const targetElement = event.currentTarget;
+            targetElement.classList.remove('drag-over');
+            
+            const dragType = event.dataTransfer.getData('application/x-drag-type');
+            if (dragType !== 'list-to-node') return;
+
+            const featureId = event.dataTransfer.getData('text/plain'); 
+            const nodeId = targetElement.dataset.nodeId;
+            
+            if (!featureId || !nodeId) return;
+
+            const targetNode = findNodeInTree(quizState.tree, nodeId);
+            if (!targetNode || targetNode.isFinal || targetNode.feature) return;
+
+            const feature = DIAGNOSTIC_FEATURES.find(f => f.id === featureId);
+            if (!feature) {
+                 console.error(`Feature with ID ${featureId} not found in DIAGNOSTIC_FEATURES.`);
+                 return;
+            }
+            
+            // 1. Snapshot and push the current state to history BEFORE modification
+            const snapshot = {
+                // Deep copy is crucial for complex object structures like the tree
+                tree: JSON.parse(JSON.stringify(quizState.tree)), 
+                availableFeatures: [...quizState.availableFeatures]
+            };
+            quizState.history.push(snapshot);
+
+
+            const splitMatch = targetNode.animals.filter(feature.condition);
+            const splitNonMatch = targetNode.animals.filter(animal => !feature.condition(animal));
+
+            if (splitMatch.length === 0 || splitNonMatch.length === 0) {
+                
+                let message = '';
+                if (splitMatch.length === 0) {
+                    message = `⚠️ The characteristic **"${feature.name}" is NOT present in any** of the remaining animals. Try a feature that divides this group.`;
+                } else {
+                    message = `⚠️ The characteristic **"${feature.name}" is common to all** the remaining animals and did not split the group. Try a feature that divides this group.`;
+                }
+                
+                // If the split fails, we must remove the last state from history
+                quizState.history.pop(); 
+
+                // Add transient warning message to the quiz area
+                const errorMsg = createMessageDiv('warning', message);
+                quizArea.prepend(errorMsg);
+                setTimeout(() => errorMsg.remove(), 5000); 
+
+                window.renderTree(); 
+                return;
+            }
+
+            // 2. Apply the new split
+            targetNode.feature = featureId;
+            targetNode.featureColorClass = feature.colorClass; 
+
+            const matchGroup = isFullyClassified(splitMatch);
+            targetNode.children.push({
+                id: crypto.randomUUID(),
+                animals: splitMatch,
+                feature: null,
+                featureColorClass: null,
+                isFinal: !!matchGroup,
+                groupName: matchGroup,
+                branchLabel: 'YES',
+                children: []
+            });
+
+            const nonMatchGroup = isFullyClassified(splitNonMatch);
+            targetNode.children.push({
+                id: crypto.randomUUID(),
+                animals: splitNonMatch,
+                feature: null,
+                featureColorClass: null,
+                isFinal: !!nonMatchGroup,
+                groupName: nonMatchGroup,
+                branchLabel: 'NO',
+                children: []
+            });
+
+            quizState.availableFeatures = quizState.availableFeatures.filter(id => id !== featureId);
+            
+            undoSplitBtn.disabled = quizState.history.length === 0;
+
+            window.renderTree();
+        }
+
+        function findNodeInTree(currentNode, targetId) {
+            if (!currentNode) return null;
+            if (currentNode.id === targetId) return currentNode;
+            
+            for (const child of currentNode.children) {
+                const found = findNodeInTree(child, targetId);
+                if (found) return found;
+            }
+            return null;
+        }
+
+        /**
+         * Parses a Tailwind color class (e.g., 'bg-red-500 hover:bg-red-600 border-red-700') 
+         * and returns the base color name (e.g., 'red').
+         */
+        function extractBaseColor(colorClass) {
+            const match = colorClass.match(/bg-([a-z]+)-\d{3}/);
+            return match ? match[1] : 'gray'; 
+        }
+        
+        // NEW: Function to capture and save the tree image
+        window.saveTreeImage = function() {
+            if (!quizState.isStarted || findUnclassifiedNodes(quizState.tree).length > 0) {
+                globalMessage.innerHTML = createMessageDiv('warning', 'Please complete the classification key before saving the image.').outerHTML;
+                return;
+            }
+            
+            // Get the container element to capture (the one containing the tree-container)
+            const element = treeCaptureWrapper; 
+            
+            // Temporarily adjust scroll to capture the full tree, as html2canvas needs the element to be visible
+            // We use treeVisualization to get the actual content width/height, as the wrapper is static
+            const scrollX = treeVisualization.scrollLeft;
+            const scrollY = treeVisualization.scrollTop;
+            
+            // To ensure full capture when content exceeds the container bounds:
+            // 1. Get the max width needed (scrollWidth)
+            const initialWidth = element.style.width;
+            const initialTransform = element.style.transform;
+            const initialOverflowX = treeVisualization.style.overflowX;
+            const initialJustifyContent = treeVisualization.style.justifyContent;
+
+            // Temporarily change container properties for a full capture:
+            element.style.width = `${treeVisualization.scrollWidth}px`;
+            element.style.transform = `translateX(0)`; // Remove any centering offset that might clip
+            treeVisualization.style.overflowX = 'visible'; // Allow full render
+            treeVisualization.style.justifyContent = 'flex-start'; // Align left to prevent clipping due to centering
+
+            html2canvas(element, { 
+                scale: 2, // Use a higher scale for better resolution
+                scrollX: -scrollX, 
+                scrollY: -scrollY,
+                useCORS: true, // Important if images were loaded from another origin (not strictly needed here if all local)
+                logging: false, // Turn off console logging
+            }).then(canvas => {
+                // Restore original styles
+                element.style.width = initialWidth;
+                element.style.transform = initialTransform;
+                treeVisualization.style.overflowX = initialOverflowX;
+                treeVisualization.style.justifyContent = initialJustifyContent;
+                
+                // Trigger download
+                const link = document.createElement('a');
+                link.download = 'Dichotomous-Key-Classification.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                
+                globalMessage.innerHTML = createMessageDiv('success', 'Image successfully saved!').outerHTML;
+            }).catch(error => {
+                console.error('Error saving image:', error);
+                globalMessage.innerHTML = createMessageDiv('error', 'Error saving image. Check console for details.').outerHTML;
+                
+                // Ensure styles are restored on error
+                element.style.width = initialWidth;
+                element.style.transform = initialTransform;
+                treeVisualization.style.overflowX = initialOverflowX;
+                treeVisualization.style.justifyContent = initialJustifyContent;
+            });
+        };
+        // END NEW SAVE IMAGE FUNCTION
+
+        // --- Rendering Functions ---
+
+        function renderFeatures() {
+            if (!quizState.isStarted) {
+                featureListContainer.innerHTML = '<p class="text-gray-500 italic text-sm p-3">Start the quiz to see available features.</p>';
+                return;
+            }
+            
+            const allGroups = new Set(quizState.initialAnimals.map(a => a.group));
+
+            const relevantFeatures = DIAGNOSTIC_FEATURES.filter(feature => 
+                quizState.availableFeatures.includes(feature.id) && 
+                feature.applies_to.some(group => allGroups.has(group))
+            );
+
+            featureListContainer.innerHTML = relevantFeatures.map(feature => {
+                // Determine text color for readability against bright colors like yellow
+                const textColor = feature.colorClass.includes('yellow') ? 'text-gray-800' : 'text-white';
+                return `
+                    <div 
+                        class="feature-draggable ${feature.colorClass} ${textColor}"
+                        draggable="true"
+                        data-feature-id="${feature.id}"
+                    >
+                        ${feature.name}
+                    </div>
+                `;
+            }).join('');
+            
+            // ATTACH DRAG LISTENERS HERE
+            document.querySelectorAll('.feature-draggable').forEach(el => {
+                el.addEventListener('dragstart', handleDragStart);
+                el.addEventListener('dragend', handleDragEnd);
+            });
+
+
+            if (relevantFeatures.length === 0 && quizState.tree) {
+                const unclassifiedCount = findUnclassifiedNodes(quizState.tree).length;
+                if (unclassifiedCount === 0) {
+                    featureListContainer.innerHTML = '<p class="text-gray-500 italic text-sm p-3">Classification complete!</p>';
+                } else {
+                    quizArea.insertAdjacentHTML('afterbegin', '<div class="p-3 mb-3 bg-red-100 text-red-700 rounded-lg font-semibold text-sm">🛑 No available features can split the remaining groups. Try resetting and starting with different initial features!</div>');
+                    featureListContainer.innerHTML = '<p class="text-gray-500 italic text-sm p-3">No features available to drag.</p>';
+                }
+            }
+        }
+
+        /**
+         * Renders a single node and recursively calls itself for children (Vertical layout).
+         */
+        function renderNode(node) {
+            if (!node || node.animals.length === 0) return '';
+            
+            // --- Content: Animals and Images ---
+            const animalsToDisplay = node.animals;
+
+            const animalContent = animalsToDisplay.map(a => {
+                const imgColor = a.group === 'Mammal' ? 'border-red-400' : a.group === 'Bird' ? 'border-yellow-400' : a.group === 'Reptile' ? 'border-green-400' : a.group === 'Amphibian' ? 'border-purple-400' : 'border-blue-400';
+                
+                // Use imagePath now
+                const encodedFileName = encodeURIComponent(a.name); 
+                const imagePath = `./images/${encodedFileName}.png`;
+
+                const imageDisplay = a.imagePath ? 
+                    // Use the relative path provided by the user and add a simple onerror for robustness
+                    // NOTE: The onerror will prevent html2canvas from failing if the image is missing, 
+                    // but the error message div will not render correctly in the canvas.
+                    `<img src="${imagePath}" alt="${a.name}" class="w-full h-full object-cover" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'text-xl font-bold text-gray-500\\'>🚫</div>';">` :
+                    `<div class="text-xl font-bold text-gray-500">🚫</div>`; 
+                    
+                return `
+                    <div class="animal-item">
+                        <div class="animal-image-container ${imgColor} bg-white">
+                            ${imageDisplay}
+                        </div>
+                        <span class="font-medium text-gray-700 leading-tight mt-1">${a.name}</span>
+                    </div>
+                `;
+            }).join('');
+
+            // --- Node Main Display ---
+            let content = '';
+            if (node.isFinal) {
+                // MODIFIED: Increased font size for final classification group name
+                content = `
+                    <div class="font-bold text-2xl mb-2">${node.groupName.toUpperCase()}</div>
+                    <div class="animal-display-grid">${animalContent}</div>
+                `;
+            } else {
+                content = `<div class="animal-display-grid">${animalContent}</div>`;
+            }
+            
+            // MODIFIED: Increased font size for drop target text
+            const featureText = `<span class="text-xl font-bold text-blue-900">DRAG & DROP FEATURE HERE</span>`; 
+            
+            let featureDisplay = '';
+            let nodeClass = 'bg-white border-gray-300'; // Default class
+            
+            // Removed drag/revert attributes
+
+            if (node.isFinal) {
+                nodeClass = 'final-node'; // Green for final classification
+            } else if (node.feature) {
+                // Node has been split, use the feature's color
+                const baseColor = extractBaseColor(node.featureColorClass);
+                
+                // Construct classes for a split node
+                nodeClass = `bg-${baseColor}-100 border-${baseColor}-500 text-${baseColor}-900 font-semibold border-4 shadow-lg split-node-draggable`;
+                
+                const featureObj = DIAGNOSTIC_FEATURES.find(f => f.id === node.feature);
+                const featureName = featureObj ? featureObj.name : 'Unknown Feature';
+                featureDisplay = `<div class="mt-2 text-base italic font-semibold text-gray-800">Split by: ${featureName}</div>`; 
+                
+            } else {
+                // Active drop target
+                nodeClass = 'active-node'; // Pulsing blue 
+                featureDisplay = `<div class="drop-target-text-wrapper">${featureText}</div>`;
+            }
+            
+            const dragDropProps = `data-node-id="${node.id}"`; 
+                
+            const innerNode = `
+                <div class="tree-node ${nodeClass}" ${dragDropProps}>
+                    <div class="node-content">
+                        ${content}
+                        ${featureDisplay}
+                    </div>
+                </div>
+            `;
+            
+            let childrenHtml = '';
+            if (node.children.length > 0) {
+                // Determine the correct children (YES is match, NO is non-match)
+                const matchChild = node.children.find(c => c.branchLabel === 'YES');
+                const nonMatchChild = node.children.find(c => c.branchLabel === 'NO');
+                
+                // NEW LOGIC: DETERMINE GRID LAYOUT CLASS BASED ON CHILD STATUS
+                let childrenGridClass = 'grid-cols-50-50'; // Default is 1fr 1fr
+                
+                if (nonMatchChild.isFinal && !matchChild.isFinal) {
+                    // NO (left) is final, YES (right) is active -> 1fr 2fr
+                    childrenGridClass = 'grid-cols-final-active'; 
+                } else if (!nonMatchChild.isFinal && matchChild.isFinal) {
+                    // NO (left) is active, YES (right) is final -> 2fr 1fr
+                    childrenGridClass = 'grid-cols-active-final'; 
+                }
+                // END NEW LOGIC
+                
+                const labelColorBase = extractBaseColor(node.featureColorClass || 'blue');
+                const labelClass = `bg-${labelColorBase}-100 text-${labelColorBase}-900`;
+                
+                childrenHtml = `
+                    <div class="split-vertical-line bg-gray-600"></div>
+                    
+                    <div class="children-container ${childrenGridClass}">
+                        
+                        <div class="absolute-stem-container no-branch bg-white"> 
+                            <span class="branch-label-side ${labelClass}">NO</span>
+                            <div class="branch-vertical-stem bg-gray-600"></div>
+                        </div>
+
+                        <div class="absolute-stem-container yes-branch bg-white"> 
+                            <span class="branch-label-side ${labelClass}">YES</span>
+                            <div class="branch-vertical-stem bg-gray-600"></div>
+                        </div>
+
+                        <div class="branch-wrapper">
+                            ${renderNode(nonMatchChild)}
+                        </div>
+                        
+                        <div class="branch-wrapper">
+                            ${renderNode(matchChild)}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="tree-node-wrapper" id="node-${node.id}">
+                    ${innerNode}
+                    ${childrenHtml}
+                </div>
+            `;
+        }
+
+        /**
+         * Finds all nodes that are not fully classified and have not yet been split.
+         */
+        function findUnclassifiedNodes(currentNode, unclassified = []) {
+            if (!currentNode) return unclassified;
+            
+            if (!currentNode.isFinal && !currentNode.feature) {
+                unclassified.push(currentNode);
+            }
+            
+            currentNode.children.forEach(child => {
+                findUnclassifiedNodes(child, unclassified);
+            });
+            
+            return unclassified;
+        }
+
+        // Global function to trigger a full re-render of the tree and control panel
+        window.renderTree = function() {
+            renderFeatures();
+            
+            const unclassifiedNodes = quizState.tree ? findUnclassifiedNodes(quizState.tree) : [];
+            const isComplete = quizState.isStarted && unclassifiedNodes.length === 0 && quizState.initialAnimals.length > 0;
+            
+            // NEW: Update save button status
+            if (saveImageBtn) {
+                saveImageBtn.disabled = !isComplete;
+            }
+            // END NEW
+
+            if (!quizState.tree) {
+                treeVisualization.innerHTML = '';
+                // Ensure undo button is disabled when tree is empty
+                undoSplitBtn.disabled = true; 
+                return;
+            }
+
+            treeVisualization.innerHTML = renderNode(quizState.tree);
+            
+            // Re-attach drag/drop listeners to all relevant nodes
+            document.querySelectorAll('.tree-node').forEach(el => {
+                // Attach drop listeners for dropping features from the list
+                if (el.classList.contains('active-node')) {
+                    el.addEventListener('dragover', handleDragOver);
+                    el.addEventListener('dragleave', handleDragLeave);
+                    el.addEventListener('drop', handleDrop);
+                } else {
+                    // Ensure listeners are removed if a node has been split or finalized
+                    el.removeEventListener('dragover', handleDragOver);
+                    el.removeEventListener('dragleave', handleDragLeave);
+                    el.removeEventListener('drop', handleDrop);
+                }
+                
+                // Removed drag/end listeners for reversion
+            });
+
+            // Update undo button status on every render
+            if(undoSplitBtn) {
+                undoSplitBtn.disabled = quizState.history.length === 0;
+            }
+
+            // Check for completion
+            if (isComplete) {
+                quizArea.innerHTML = `
+                    <div class="p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-lg font-bold text-lg text-center">
+                        🎉 CONGRATULATIONS! You have fully classified all ${quizState.initialAnimals.length} animals! Click **"Save Key Image"** to download your key.
+                    </div>
+                `;
+            } else if (quizState.isStarted && unclassifiedNodes.length > 0) {
+                // Clear existing generic messages if the quiz is ongoing
+                quizArea.innerHTML = '';
+            }
+        };
+
+
+        // --- Core Application Logic (Now attached to window for inline HTML access) ---
+
+        window.updateStartButtonState = function() {
+            const checkedAnimals = Array.from(checkboxContainer.querySelectorAll('input:checked'));
+            startQuizBtn.disabled = checkedAnimals.length < 2;
+        }
+
+        function populateCheckboxes() {
+            checkboxContainer.innerHTML = ANIMALS.map(animal => `
+                <label class="flex items-center space-x-2 text-sm text-gray-700 hover:bg-blue-50 p-1 rounded-md transition duration-100 cursor-pointer">
+                    <input type="checkbox" name="animal" value="${animal.name}" data-group="${animal.group}" class="rounded text-blue-600 focus:ring-blue-500 h-4 w-4" onchange="updateStartButtonState()">
+                    <span>${animal.name}</span>
+                </label>
+            `).join('');
+            window.updateStartButtonState(); // Initial check
+        }
+        
+        /**
+         * Validates and adjusts the number of animals selected for random generation.
+         */
+        window.validateRandomCount = function() {
+            const input = document.getElementById('random-count');
+            const maxCount = ANIMALS.length; 
+            let count = parseInt(input.value);
+            
+            if (isNaN(count) || count < 2) {
+                input.value = 2;
+            } else if (count > maxCount) {
+                input.value = maxCount;
+            }
+        }
+        
+        /**
+         * Reads the count from the input and triggers the random selection.
+         */
+        window.randomlySelectAnimalsFromInput = function() {
+            const input = document.getElementById('random-count');
+            // Ensure validation runs first
+            window.validateRandomCount(); 
+            const count = parseInt(input.value);
+            
+            // Call the core selection logic with the determined count
+            window.randomlySelectAnimals(count);
+        }
+
+        /**
+         * Core selection logic, accepting the desired count.
+         */
+        window.randomlySelectAnimals = function(count) {
+            // First, uncheck all existing
+            checkboxContainer.querySelectorAll('input').forEach(cb => cb.checked = false);
+
+            // Shuffle animals and select based on unique groups first
+            const shuffled = ANIMALS.sort(() => 0.5 - Math.random());
+            let selectedGroups = new Set();
+            let selectedCount = 0;
+            
+            // Phase 1: Prioritize selecting a diversity of groups
+            for (const animal of shuffled) {
+                if (!selectedGroups.has(animal.group) && selectedCount < count) {
+                    const checkbox = checkboxContainer.querySelector(`input[value="${animal.name}"]`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                        selectedGroups.add(animal.group);
+                        selectedCount++;
+                    }
+                }
+            }
+
+            // Phase 2: Fill the rest if needed
+            let i = 0;
+            while (selectedCount < count && i < shuffled.length) {
+                const animal = shuffled[i];
+                const checkbox = checkboxContainer.querySelector(`input[value="${animal.name}"]`);
+                if (checkbox && !checkbox.checked) {
+                    checkbox.checked = true;
+                    selectedCount++;
+                }
+                i++;
+            }
+            
+            window.updateStartButtonState();
+        };
+
+        // Expose to global scope for button click (from HTML)
+        window.startQuiz = async function() {
+            const checkedCheckboxes = Array.from(checkboxContainer.querySelectorAll('input:checked'));
+            if (checkedCheckboxes.length < 2) {
+                window.resetQuiz(); 
+                return; 
+            }
+            
+            if (quizState.isStarted) {
+                window.resetQuiz();
+                return;
+            }
+
+            // 1. Setup initial animals and state
+            let animalsToProcess = checkedCheckboxes.map(cb => {
+                const animalName = cb.value;
+                const group = cb.dataset.group;
+                quizState.initialGroups.add(group);
+                
+                // FIX: Use encodeURIComponent to correctly handle spaces in file names like "Python Snake"
+                const encodedFileName = encodeURIComponent(animalName); 
+                
+                // Construct the path: './images/Python%20Snake.png'
+                return { name: animalName, group: group, imagePath: `./images/${encodedFileName}.png` };
+            });
+
+            // 2. Clear history on fresh start
+            quizState.history = [];
+
+            // 3. Update state with local image paths
+            quizState.initialAnimals = animalsToProcess;
+            quizState.availableFeatures = DIAGNOSTIC_FEATURES.map(f => f.id);
+            
+            const initialGroupName = isFullyClassified(quizState.initialAnimals);
+            quizState.tree = {
+                id: crypto.randomUUID(),
+                animals: quizState.initialAnimals,
+                feature: null,
+                featureColorClass: null,
+                isFinal: !!initialGroupName,
+                groupName: initialGroupName,
+                branchLabel: 'ROOT',
+                children: []
+            };
+            
+            quizState.isStarted = true;
+            
+            // 4. Update UI for active quiz
+            startQuizBtn.textContent = 'Reset Quiz';
+            startQuizBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+            startQuizBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+            
+            globalMessage.innerHTML = createMessageDiv('success', `Quiz started with ${quizState.initialAnimals.length} animals. Build your key by dragging features from the sidebar!`).outerHTML;
+            quizArea.innerHTML = '';
+            window.renderTree();
+        };
+
+        // Function to reset the quiz (Exposed to window)
+        window.resetQuiz = function() {
+            quizState.isStarted = false;
+            quizState.initialAnimals = [];
+            quizState.initialGroups = new Set();
+            quizState.availableFeatures = DIAGNOSTIC_FEATURES.map(f => f.id);
+            quizState.tree = null;
+            quizState.history = []; // Clear history
+
+            // Reset button appearance and action
+            startQuizBtn.textContent = 'Start Classification Key!';
+            startQuizBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+            startQuizBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+            window.updateStartButtonState(); // Disables if < 2 selected
+
+            // Clear containers
+            quizArea.innerHTML = '<p class="text-gray-500 text-lg text-center p-8 border-dashed border rounded-lg">Select animals and click "Start" to begin building the classification key.</p>';
+            globalMessage.innerHTML = '';
+            
+            // NEW: Disable save button on reset
+            if(saveImageBtn) saveImageBtn.disabled = true;
+
+            // Render features (will show placeholder)
+            renderFeatures();
+            window.renderTree(); 
+        };
+        
+        // This function is no longer needed but kept as a placeholder if the original HTML had it.
+        window.toggleAnimalImages = function() {
+            console.log("Toggle image function is disabled as images are now embedded in the tree nodes.");
+        };
+
+
+        // --- Initialization ---
+
+        function initApp() {
+            populateCheckboxes();
+            // Initial render of the empty tree
+            window.renderTree(); 
+        }
+        
+        window.onload = initApp;
+
+    </script>
+</body>
+</html>
